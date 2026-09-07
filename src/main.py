@@ -62,11 +62,13 @@ def get_root_url(url: str) -> str:
     return url
 
 def strip_utm_params(url: str) -> str:
-    # Remove UTM tracking parameters from a URL.
+    # Drop the query string and the fragment. AI-search sources often include
+    # scroll-to-text fragments ("#:~:text=...") whose unencoded punctuation
+    # makes WCC's URL validator reject the whole startUrls list.
     try:
-        end = url.find("?")
-        if end > 0:
-            url = url[0:end]
+        cut_points = [i for i in (url.find("?"), url.find("#")) if i > 0]
+        if cut_points:
+            url = url[: min(cut_points)]
         return url
     except Exception:
         return url
@@ -365,7 +367,13 @@ async def main() -> None:
         # Filter out blacklisted, own, and competitor domains.
         filtered_source = list()
         for url in processed_source_urls:
+            if not url.startswith(('http://', 'https://')):
+                Actor.log.info(f'Skipped non-http(s) source: {url}')
+                continue
             domain = extract_domain(url)
+            if not domain:
+                Actor.log.info(f'Skipped source without a domain: {url}')
+                continue
             if domain in SKIP_CONTACT_DOMAINS:
                 Actor.log.info(f'Skipped blacklisted source: {url}')
             elif domain in own_domains:
